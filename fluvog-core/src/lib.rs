@@ -5,6 +5,8 @@ const KEY_LEN_SIZE: u32 = 4;
 const VALUE_LEN_SIZE: u32 = 4;
 const META_SIZE: u32 = OFFSET_SIZE + KEY_LEN_SIZE + VALUE_LEN_SIZE;
 
+const MAX_TOPIC_NAME_LEN: usize = 249;
+
 #[derive(Debug, Clone)]
 pub struct Record {
     following_len: u32,
@@ -23,6 +25,14 @@ struct RecordMeta {
 struct Entry {
     key: Vec<u8>,
     value: Vec<u8>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Topic(String);
+
+pub enum TopicError {
+    InvalidLength,
+    InvalidChars,
 }
 
 // ===== impl Record =====
@@ -60,11 +70,30 @@ impl Record {
     }
 }
 
+// ===== impl Topic =====
+impl Topic {
+    pub fn new(name: impl Into<String>) -> Result<Self, TopicError> {
+        let name = name.into();
+
+        if name.len() > MAX_TOPIC_NAME_LEN {
+            return Err(TopicError::InvalidLength);
+        }
+
+        if !name
+            .chars()
+            .all(|c| c.is_alphanumeric() || c == '.' || c == '_' || c == '-')
+        {
+            return Err(TopicError::InvalidChars);
+        }
+        Ok(Self(name))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
 
-    use crate::Record;
+    use crate::{Record, Topic};
 
     #[test]
     fn record_following_len() {
@@ -89,5 +118,25 @@ mod tests {
         let following_len_field_size = 4;
 
         assert_eq!(record.following_len, total_size - following_len_field_size);
+    }
+
+    #[test]
+    fn topic_len() {
+        assert!(Topic::new("name").is_ok());
+
+        // 97u8 == 'a' (ASCII)
+        let invalid_topic_name = String::from_utf8_lossy(&[97u8; 250]);
+        assert!(Topic::new(invalid_topic_name).is_err());
+    }
+
+    #[test]
+    fn topic_char() {
+        assert!(Topic::new("name_").is_ok());
+        assert!(Topic::new("name-").is_ok());
+        assert!(Topic::new("name.").is_ok());
+
+        assert!(Topic::new("name/").is_err());
+        assert!(Topic::new("name+").is_err());
+        assert!(Topic::new("name)").is_err());
     }
 }
