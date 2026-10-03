@@ -1,5 +1,7 @@
 use std::io;
 
+use thiserror::Error;
+
 const OFFSET_SIZE: u32 = 8;
 const KEY_LEN_SIZE: u32 = 4;
 const VALUE_LEN_SIZE: u32 = 4;
@@ -30,8 +32,11 @@ struct Entry {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Topic(String);
 
+#[derive(Debug, Clone, Error)]
 pub enum TopicError {
+    #[error("invalid topic name: length must be between 1 and 249 characters")]
     InvalidLength,
+    #[error("Invalid topic name: contains characters that are not allowed.")]
     InvalidChars,
 }
 
@@ -72,10 +77,14 @@ impl Record {
 
 // ===== impl Topic =====
 impl Topic {
+    /// Construct [`Topic`] with the specified name.
+    ///
+    /// # Topic Name Restrictions
+    /// - Length must be between 1 and 249 characters.
+    /// - Can contain alphanumeric characters, `.`, `_`, and `-`.
     pub fn new(name: impl Into<String>) -> Result<Self, TopicError> {
-        let name = name.into();
-
-        if name.len() > MAX_TOPIC_NAME_LEN {
+        let name = name.into().trim().to_string();
+        if name.is_empty() || name.len() > MAX_TOPIC_NAME_LEN {
             return Err(TopicError::InvalidLength);
         }
 
@@ -124,6 +133,11 @@ mod tests {
     fn topic_len() {
         assert!(Topic::new("name").is_ok());
 
+        // empty
+        assert!(Topic::new("").is_err());
+        assert!(Topic::new("   ").is_err());
+
+        // over length
         // 97u8 == 'a' (ASCII)
         let invalid_topic_name = String::from_utf8_lossy(&[97u8; 250]);
         assert!(Topic::new(invalid_topic_name).is_err());
